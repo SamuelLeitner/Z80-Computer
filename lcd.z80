@@ -1,0 +1,330 @@
+;PIO Definitionen
+DDRA EQU 0x02 ;0010
+DDRB EQU 0x03 ;0011
+
+; DDRx setzen auf:
+OUTPUT EQU 0x0F
+INPUT EQU 0x4F
+BITCONTROL EQU 0xCF
+
+PORTA EQU 0x00 ;0000
+PORTB EQU 0x01 ;0001
+
+
+
+;LCD Definitionen
+RS EQU 0x04 ; 1<<2
+EN EQU 0x08 ; 1<<3
+
+;Variablen
+var1 EQU 0x8002
+
+
+ORG 0x0000
+LD SP, 0xFFFF
+
+
+Start:
+LD A, BITCONTROL    ; Inizialisierung des PIOs im Bitcontroll Modus
+OUT (DDRA),A
+
+LD A, 0x03          ;QQQQ QQII
+OUT (DDRA), A
+
+
+; ~1 Sekunde , Inizialisierung Delay
+LD A, 250
+CALL DELAY
+LD A, 250
+CALL DELAY
+LD A, 250
+CALL DELAY
+LD A, 250
+CALL DELAY
+
+
+;Inizialisierung LCD 4 Bit Modus
+LD B, 0x02          ;Cursor zu Home
+CALL LCD_DATA
+LD B, 0x28          ;4 Bit Modus, 2 Zeilen, 5x8 Buchstaben
+CALL LCD_DATA
+LD B, 0x0F          ;Display ein, Cursor blinkt
+CALL LCD_DATA
+LD B, 0x01          ;Clear
+CALL LCD_DATA
+
+LD A, 250
+CALL DELAY
+
+
+;Schreiben von Chars zum Display in HEX, 'H' = 0x48
+LD B, 'C'
+CALL LCD_CHAR
+LD B, 'u'
+CALL LCD_CHAR
+LD B, 's'
+CALL LCD_CHAR
+LD B, 't'
+CALL LCD_CHAR
+LD B, 'o'
+CALL LCD_CHAR
+LD B, 'm'
+CALL LCD_CHAR
+LD B, ':'
+CALL LCD_CHAR
+
+
+
+
+;Custom Zeichen schreiben:
+LD A, 0
+;GCRAM Adresse setzen
+LD B,  0x40         ;Pos 0
+CALL LCD_DATA
+
+
+custom:
+PUSH AF
+;Lade byte auf index
+LD B, 0
+LD HL, CustomChar   ;addresse
+LD C, A             ;offset
+ADD HL, BC          ;addresse + offset
+;Datenreihe Schreiben
+LD B, (HL)
+CALL LCD_CHAR
+
+POP AF
+INC A
+CP 8
+JP NZ, custom
+;#################################
+;Custom Zeichen schreiben:
+LD A, 0
+;GCRAM Adresse setzen
+LD B,  0x48         ;Pos 1
+CALL LCD_DATA
+
+
+custom1:
+PUSH AF
+;Lade byte auf index
+LD B, 0
+LD HL, CustomChar1   ;addresse
+LD C, A             ;offset
+ADD HL, BC          ;addresse + offset
+;Datenreihe Schreiben
+LD B, (HL)
+CALL LCD_CHAR
+
+POP AF
+INC A
+CP 8
+JP NZ, custom1
+
+
+
+
+LD B, 0x90
+CALL LCD_DATA
+LD B, 'I'
+CALL LCD_CHAR
+
+LD B, 0x00
+CALL LCD_CHAR
+LD B, 0x01
+CALL LCD_CHAR
+
+
+
+
+main_loop:
+LD A, 0
+
+;Read data byte
+IN A, (PORTA)
+AND 0x01 ; 0000 0001
+CP 0
+JR Z, skip
+LD B, 'X'
+CALL LCD_CHAR
+
+skip:
+
+LD A, 10
+CALL DELAY
+JP main_loop
+
+
+
+
+
+
+
+
+
+
+
+
+
+; ####################### LCD DATA ######################
+LCD_DATA:
+PUSH AF
+PUSH BC 
+
+LD A, 0xF0
+AND B
+OUT (PORTA), A
+; 0xCA & 0xF0 -> 0xC0
+
+LD C, EN
+OR C
+OUT (PORTA), A
+; 0xC0 | 0x08 -> 0xC8
+
+LD A, 3
+CALL DELAY
+
+
+LD C, A
+LD A, EN
+CPL
+AND C
+OUT (PORTA), A
+; 0xC8 & CPL(0x08) -> 0xC0
+
+;#########################
+
+LD A, 0x0F
+AND B
+RLCA
+RLCA
+RLCA
+RLCA
+
+OUT (PORTA), A
+; (0xCA & 0x0F) << 4 -> 0xA0
+
+LD C, EN
+OR C
+OUT (PORTA), A
+; 0xA0 | 0x08 -> 0xA8
+
+LD A, 3
+CALL DELAY
+
+LD C, A
+LD A, EN
+CPL
+AND C
+OUT (PORTA), A
+; 0xA8 & CPL(0x08) -> 0xA0
+
+LD A, 3
+CALL DELAY
+POP BC
+POP AF
+RET
+
+
+
+
+
+; ####################### LCD CHAR ######################
+LCD_CHAR:
+PUSH AF
+PUSH BC
+
+LD A, 0xF0
+AND B
+LD C, RS
+OR C
+OUT (PORTA), A
+; 0xCA & 0xF0 -> 0xC0
+; 0xC0 | 0x04 -> 0xC4
+
+LD C, EN
+OR C
+OUT (PORTA), A
+; 0xC4 | 0x08 -> 0xCC
+
+LD A, 3
+CALL DELAY
+
+LD C, A
+LD A, EN
+CPL
+AND C
+OUT (PORTA), A
+; 0xCC & CPL(0x08) -> 0xC4
+
+;#########################
+
+LD A, 0x0F
+AND B
+RLCA
+RLCA
+RLCA
+RLCA
+LD C, RS
+OR C
+
+OUT (PORTA), A
+; (0xCA & 0x0F) << 4 -> 0xA0
+; 0xA0 | 0x04 -> 0xA4
+
+LD C, EN
+OR C
+OUT (PORTA), A
+; 0xA0 | 0x0C -> 0xAC
+
+LD A, 3
+CALL DELAY
+
+LD C, A
+LD A, EN
+CPL
+AND C
+OUT (PORTA), A
+; 0xAC & CPL(0x08) -> 0xA4
+
+LD A, 3
+CALL DELAY
+POP BC
+POP AF
+RET
+
+
+
+
+
+
+; #######################  DELAY  ######################
+DELAY:
+PUSH AF
+PUSH BC
+
+loop:
+    LD B, A
+    LD A, 255  ; ca 1ms
+
+loop_2:
+    DEC A       ; 4 cycles
+    CP 0        ; 7 cycles
+    JR NZ, loop_2 ; 10 cycles 
+
+    LD A, B
+    DEC A       ; 4 cycles
+    CP 0        ; 7 cycles
+    JR NZ, loop ; 10 cycles 
+
+
+POP BC
+POP AF
+RET
+
+
+CustomChar1: .byte 0x00,0x0A,0x15,0x11,0x0A,0x04,0x00,0x00
+CustomChar: .byte  0x00,0x00,0x0A,0x00,0x11,0x0E,0x00,0x00
+;CustomChar1: .byte 0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF
+

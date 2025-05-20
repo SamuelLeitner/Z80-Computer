@@ -1,0 +1,428 @@
+;PIO Definitionen
+DDRA EQU 0x02 ;0010
+DDRB EQU 0x03 ;0011
+
+; DDRx setzen auf:
+OUTPUT EQU 0x0F
+INPUT EQU 0x4F
+BITCONTROL EQU 0xCF
+
+PORTA EQU 0x00 ;0000
+PORTB EQU 0x01 ;0001
+
+
+;LCD Definitionen
+RS EQU 0x04 ; 1<<2
+EN EQU 0x08 ; 1<<3
+
+;Variablen
+keypressWord EQU 0x8002
+counter EQU 0x8004
+
+SETUP:
+DI
+;init Stack:
+LD SP, 0xFFFF
+
+
+; set up Vector Table higher byte
+LD A, 0x05  ; Vector Table Start
+LD I, A 
+
+
+
+; Init keyboard
+;A0 -> Clock
+;A1 -> Data
+;[A0 A1 Output]
+
+;Clock LOW
+;NOP
+;Data  LOW
+;Clock HIGH
+
+;[A0 Interrupt, A1 Input]
+LD A, BITCONTROL  
+OUT (DDRA),A
+
+LD A, 0x02      ; QQQQ QQIQ
+OUT (DDRA), A
+LD A, 0x00
+OUT (PORTA), A  ;Clock Low ; Data input
+NOP
+
+LD A, 0x00      ; QQQQ QQQQ
+OUT (DDRA), A
+LD A, 0x00
+OUT (PORTA), A  ;Clock Low ; Data Low
+LD A, 0x01
+OUT (PORTA), A  ;Data Low ; Clock High
+
+
+LD A, BITCONTROL  
+OUT (DDRA),A
+LD A, 0x03      ; QQQQ QQII
+OUT (DDRA), A
+LD A, 0x00      ; Inverrupt Vector
+OUT (DDRA), A
+LD A, 0x97      ; Interrupt controll word -> 9 for falling edge
+OUT (DDRA), A
+LD A, 0xFE      ; Mask PA0 -> Clock
+OUT (DDRA), A
+
+
+
+IM 2
+EI  ;Enable Interrupt
+
+
+START:
+CALL DELAY
+
+LD HL, 0xACFC
+LD (keypressWord), HL
+LD A, 0
+LD (counter), A
+
+
+; ~1 Sekunde
+CALL DELAY
+CALL DELAY
+CALL DELAY
+CALL DELAY
+CALL DELAY
+CALL DELAY
+CALL DELAY
+CALL DELAY
+CALL DELAY
+CALL DELAY
+
+
+;Init LCD 4 bit mode
+LD B, 0x02 
+CALL LCD_DATA
+LD B, 0x28
+CALL LCD_DATA
+LD B, 0x0F
+CALL LCD_DATA
+LD B, 0x01
+CALL LCD_DATA
+
+; ~1 Sekunde
+CALL DELAY
+CALL DELAY
+CALL DELAY
+CALL DELAY
+CALL DELAY
+CALL DELAY
+CALL DELAY
+CALL DELAY
+CALL DELAY
+CALL DELAY
+
+;LD B, 'H'
+;CALL LCD_CHAR
+;LD B, 'e'
+;CALL LCD_CHAR
+;LD B, 'l'
+;CALL LCD_CHAR
+;LD B, 'l'
+;CALL LCD_CHAR
+;LD B, 'o'
+;CALL LCD_CHAR
+
+
+LD B, 'T'
+CALL LCD_CHAR
+LD B, 'e'
+CALL LCD_CHAR
+LD B, 's'
+CALL LCD_CHAR
+LD B, 'k'
+CALL LCD_CHAR
+
+LD B, 0x90
+CALL LCD_DATA
+
+
+
+
+test:
+HALT
+JP test
+
+
+
+
+Print_to_screen:
+LD B, 0x90
+CALL LCD_DATA
+
+
+LD HL, (keypressWord)
+
+
+LD A, 8
+
+for_8:
+DEC A
+
+BIT 7, L
+JP Z, is_zero
+LD B, '1'
+CALL LCD_CHAR
+JP not_zero
+
+is_zero:
+LD B, '0'
+CALL LCD_CHAR
+
+not_zero:
+SLA H
+RL L
+
+CP 0
+JP NZ, for_8
+
+
+
+LD A, 8
+
+for_8_2:
+DEC A
+
+BIT 7, L
+JP Z, is_zero_2
+LD B, '1'
+CALL LCD_CHAR
+JP not_zero_2
+
+is_zero_2:
+LD B, '0'
+CALL LCD_CHAR
+
+not_zero_2:
+SLA H
+RL L
+
+CP 0
+JP NZ, for_8_2
+
+
+
+
+LD A, 0
+LD (counter), A
+
+
+RET
+
+
+
+
+; ####################### LCD DATA ######################
+LCD_DATA:
+PUSH AF
+PUSH BC
+PUSH HL
+
+
+LD A, 0xF0
+AND B
+OUT (PORTA), A
+; 0xCA & 0xF0 -> 0xC0
+
+LD C, EN
+OR C
+OUT (PORTA), A
+; 0xC0 | 0x08 -> 0xC8
+
+CALL DELAY ;delay
+
+LD C, A
+LD A, EN
+CPL
+AND C
+OUT (PORTA), A
+; 0xC8 & CPL(0x08) -> 0xC0
+
+;#########################
+
+LD A, 0x0F
+AND B
+RLCA
+RLCA
+RLCA
+RLCA
+
+OUT (PORTA), A
+; (0xCA & 0x0F) << 4 -> 0xA0
+
+LD C, EN
+OR C
+OUT (PORTA), A
+; 0xA0 | 0x08 -> 0xA8
+
+CALL DELAY ;delay
+
+LD C, A
+LD A, EN
+CPL
+AND C
+OUT (PORTA), A
+
+; 0xA8 & CPL(0x08) -> 0xA0
+CALL DELAY ;delay
+
+POP HL
+POP BC
+POP AF
+RET
+
+
+
+; ####################### LCD CHAR ######################
+LCD_CHAR:
+PUSH AF
+PUSH BC
+PUSH HL
+
+LD A, 0xF0
+AND B
+LD C, RS
+OR C
+OUT (PORTA), A
+; 0xCA & 0xF0 -> 0xC0
+; 0xC0 | 0x04 -> 0xC4
+
+LD C, EN
+OR C
+OUT (PORTA), A
+; 0xC4 | 0x08 -> 0xCC
+
+CALL DELAY ;delay
+
+LD C, A
+LD A, EN
+CPL
+AND C
+OUT (PORTA), A
+; 0xCC & CPL(0x08) -> 0xC4
+
+;#########################
+
+LD A, 0x0F
+AND B
+RLCA
+RLCA
+RLCA
+RLCA
+LD C, RS
+OR C
+
+OUT (PORTA), A
+; (0xCA & 0x0F) << 4 -> 0xA0
+; 0xA0 | 0x04 -> 0xA4
+
+LD C, EN
+OR C
+OUT (PORTA), A
+; 0xA0 | 0x0C -> 0xAC
+
+CALL DELAY ;delay
+
+LD C, A
+LD A, EN
+CPL
+AND C
+OUT (PORTA), A
+; 0xAC & CPL(0x08) -> 0xA4
+
+CALL DELAY ;delay
+POP HL
+POP BC
+POP AF
+RET
+
+
+;delay ~ 100ms -> 99ms +7
+DELAY:
+LD A, 3    ;7
+loop:
+DEC A       ;4
+NOP         ;4
+NOP         ;4
+NOP         ;4
+CP 0        ;7
+JR NZ, loop ;10
+; 33
+;99
+RET
+
+
+
+.ORG 0x0500
+DW 0x0700   ; Pointer to ISR
+;DS 255, 0x00 ; Fill remaining bytes to cover full 257-byte vector table
+
+
+;ISR
+.ORG 0x0700
+DI
+PUSH AF
+PUSH HL
+
+
+;Fetch contetents of key variable
+LD HL, (keypressWord)
+SLA H
+RL L
+
+
+;Read data byte
+IN A, (PORTA)
+AND 0x02
+;If databyte == 0 -> set bit 0 of L
+CP 0
+JR Z, skip
+SET 0, H
+
+
+skip:
+LD (keypressWord), HL
+LD A, (counter)
+INC A
+LD (counter), A
+
+CP 0x0B
+JR NZ, pass
+CALL Print_to_screen
+pass:
+
+
+POP HL
+POP AF
+EI
+RETI
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
